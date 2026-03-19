@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-飞书机器人 - 使用官方 lark-oapi 长连接 SDK
+飞书机器人 - 使用官方 lark-oapi 长连接 WebSocket SDK
 """
 
-import sys
+import os
 import json
 import requests
-from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
-from lark_oapi.ws import Client as WsClient
+from lark_oapi import ws
 
-# 设置 UTF-8 输出
-sys.stdout.reconfigure(encoding='utf-8')
 
 # ============ 配置 ============
 FEISHU_APP_ID = "cli_a931077c75795cd6"
@@ -47,54 +43,9 @@ def call_coze(msg):
         return f"出错了: {str(e)}"
 
 
-class MyEventHandler(EventDispatcherHandler):
-    """自定义事件处理器"""
-    
-    def __init__(self):
-        super().__init__()
-    
-    def do(self, req):
-        """处理事件"""
-        print("\n[收到事件]")
-        
-        # 解析事件数据
-        event_data = json.loads(req.body.decode("utf-8"))
-        event_type = event_data.get("event", "")
-        data = event_data.get("data", {})
-        
-        print(f"  事件类型: {event_type}")
-        
-        # 处理消息事件
-        if event_type == "im.message.receive_v1":
-            try:
-                msg = data.get("message", {})
-                sender = data.get("sender", {})
-                content = json.loads(msg.get("content", "{}"))
-                user_msg = content.get("text", "")
-                open_id = sender.get("sender_id", {}).get("open_id", "")
-                
-                if user_msg and open_id:
-                    print(f"  用户消息: {user_msg}")
-                    print(f"  正在调用扣子...")
-                    reply = call_coze(user_msg)
-                    print(f"  扣子回复: {reply[:80]}...")
-                    
-                    token = get_token()
-                    if token:
-                        result = send_msg(token, open_id, reply)
-                        if result.get("code") == 0:
-                            print("  [OK] 回复已发送")
-                        else:
-                            print(f"  [FAIL] 发送失败: {result.get('msg')}")
-            except Exception as e:
-                print(f"处理消息错误: {e}")
-        
-        return None
-
-
 def main():
     print("=" * 50)
-    print("  飞书扣子机器人 - 官方长连接 SDK")
+    print("飞书扣子机器人 - 官方长连接 SDK")
     print("=" * 50)
     print(f"App ID: {FEISHU_APP_ID}")
     print()
@@ -106,33 +57,57 @@ def main():
     print("正在连接飞书服务器...")
     print()
     
-    # 创建事件处理器
-    event_handler = MyEventHandler()
+    # 消息处理函数
+    def on_p2p_message(event):
+        print(f"[收到私聊消息]")
+        try:
+            msg = event.message
+            sender = event.sender
+            content = json.loads(msg.content)
+            user_msg = content.get("text", "")
+            open_id = sender.sender_id.open_id
+            
+            if user_msg:
+                print(f"  用户消息: {user_msg}")
+                reply = call_coze(user_msg)
+                print(f"  扣子回复: {reply[:50]}...")
+                
+                token = get_token()
+                if token:
+                    result = send_msg(token, open_id, reply)
+                    if result.get("code") == 0:
+                        print("  ✓ 已发送回复")
+                    else:
+                        print(f"  ✗ 发送失败: {result.get('msg')}")
+        except Exception as e:
+            print(f"处理错误: {e}")
     
-    # 创建客户端
-    client = WsClient(
+    # 事件处理函数
+    def event_handler(event, data):
+        print(f"[收到事件] type={event}, data={data}")
+    
+    # 连接成功处理
+    def on_open(ws_client):
+        print("✓ 已连接到飞书服务器！")
+        print()
+        print("=" * 50)
+        print("机器人已就绪！")
+        print("在飞书中搜索你的应用，开始对话测试")
+        print("按 Ctrl+C 停止运行")
+        print("=" * 50)
+    
+    # 创建并启动客户端
+    client = ws.Client(
         FEISHU_APP_ID,
         FEISHU_APP_SECRET,
-        event_handler=event_handler
+        event_handler=event_handler,
+        on_open=on_open
     )
     
-    print("[OK] 客户端已创建")
-    print()
-    print("提示：现在请回到飞书后台页面：")
-    print("1. 确认已选中「使用长连接接收事件」")
-    print("2. 确认已订阅 im.message.receive_v1 事件")
-    print("3. 点击「保存」")
-    print()
+    # 注册私聊消息处理
+    client.register_p2p_message_handler(on_p2P_message)
     
-    # 启动客户端
-    print("正在启动连接...")
     client.start()
-    
-    print("\n" + "=" * 50)
-    print("[OK] 机器人已启动！")
-    print("在飞书中搜索应用，开始对话测试")
-    print("按 Ctrl+C 停止运行")
-    print("=" * 50 + "\n")
 
 
 if __name__ == "__main__":
