@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 飞书机器人 - 对接扣子智能体
 用于接收飞书消息，调用扣子API，并将回复发送回飞书
@@ -7,9 +8,6 @@ from flask import Flask, request, jsonify
 import requests
 import json
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
 
@@ -61,7 +59,7 @@ def call_coze_api(user_message):
     }
 
     try:
-        response = requests.post(COZE_API_URL, headers=headers, json=data, timeout=30)
+        response = requests.post(COZE_API_URL, headers=headers, json=data, timeout=60)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -103,7 +101,6 @@ def webhook():
         if "error" in coze_response:
             reply_text = f"抱歉，发生了错误：{coze_response['error']}"
         else:
-            # 根据扣子API返回格式调整
             reply_text = coze_response.get("result", coze_response.get("data", "抱歉，我暂时无法回答这个问题。"))
             if isinstance(reply_text, dict):
                 reply_text = reply_text.get("content", "抱歉，我暂时无法回答这个问题。")
@@ -120,8 +117,9 @@ def webhook():
 @app.route("/health", methods=["GET"])
 def health():
     """健康检查接口"""
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "message": "飞书扣子机器人服务运行中"})
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
